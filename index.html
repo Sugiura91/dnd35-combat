@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, height=device-height, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Gestionnaire de combat D&D 3.5</title>
 <style>
 body {
@@ -14,6 +14,9 @@ body {
   display:flex;
   flex-direction:column;
   overflow:hidden;
+  user-select: none;
+  -webkit-user-select: none;
+  -ms-user-select: none;
 }
 h2 { text-align:center; margin:0.5em 0; font-size:1.2rem; }
 .tab { display:none; height:100%; flex-direction:column; }
@@ -620,6 +623,10 @@ document.getElementById("confirmNo").onclick=()=>{modal.style.display="none";};
 // Initial render
 function renderAll(){renderHeros();renderAllies();renderEnemies();renderBuffs();renderCharSelect();renderCombat();}
 renderAll();
+</script>
+<script>
+  // Bloque le clic droit et le menu contextuel
+  document.addEventListener('contextmenu', event => event.preventDefault());
 </script>
 </body>
 </html>
