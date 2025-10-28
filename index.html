@@ -10,6 +10,8 @@ body {
   font-family: system-ui, sans-serif;
   background:#1e1e1e;
   color:#eee;
+  position: fixed; /* empêche tout décalage visuel de la fenêtre */
+  width: 100%;
   height:100vh;
   display:flex;
   flex-direction:column;
@@ -17,6 +19,8 @@ body {
   user-select: none;
   -webkit-user-select: none;
   -ms-user-select: none;
+  overscroll-behavior: none; /* empêche le rebond du scroll */
+  touch-action: manipulation; /* désactive le zoom par double tap et les gestes à deux doigts */
 }
 h2 { text-align:center; margin:0.5em 0; font-size:1.2rem; }
 .tab { display:none; height:100%; flex-direction:column; }
