@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Gestionnaire de combat D&D 3.5</title>
+<style>
+body {
+  margin:0;
+  font-family: system-ui, sans-serif;
+  background:#1e1e1e;
+  color:#eee;
+  height:100vh;
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+}
+h2 { text-align:center; margin:0.5em 0; font-size:1.2rem; }
+.tab { display:none; height:100%; flex-direction:column; }
+
+nav {
+  position:fixed; bottom:0; left:0; width:100%; display:flex;
+  background:#222; border-top:1px solid #444; height:64px; z-index:100;
+}
+nav button {
+  flex:1; border:none; background:#222; color:#ccc;
+  font-size:1rem; cursor:pointer;
+}
+nav button.active { background:#444; color:#fff; }
+
+.flex { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-bottom:10px; }
+input, select { flex:1; min-width:80px; font-size:1rem; padding:6px; border-radius:6px; border:1px solid #555; background:#2b2b2b; color:#fff; }
+button { background:#444; color:#fff; border:none; padding:8px 12px; border-radius:6px; cursor:pointer; font-size:1rem; }
+button:hover { background:#666; }
+.list { overflow:auto; }
+
+.participant {
+  background:#2b2b2b;
+  border:1px solid #444;
+  border-radius:8px;
+  padding:10px;
+  margin-bottom:8px;
+  position:relative;
+}
+.participant.active {
+  border: 2px solid #00bcd4;
+  background: #2f2f3f;
+  box-shadow: 0 0 10px #00bcd4;
+}
+
+.participant .pv-control {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.participant .pv-display {
+  flex: 0 0 auto;
+  min-width: 50px;
+  text-align: center;
+  margin: 0 8px;
+}
+
+.participant button.small {
+  flex: 0 0 auto;
+  padding:2px 6px;
+  font-size:0.8rem;
+  border-radius:4px;
+}
+
+.participant button.remove {
+  position:absolute;
+  right:10px;
+  top:10px;
+  background:#b33;
+  color:#fff;
+  padding:4px 8px;
+  border:none;
+  border-radius:6px;
+  font-size:0.9rem;
+  cursor:pointer;
+}
+.participant button.remove:hover { background:#d55; }
+
+button.remove-small {
+  background: #b33;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+button.remove-small:hover {
+  background: #d55;
+}
+
+.subtabs { display:flex; gap:6px; margin-bottom:8px; }
+.subtab-btn {
+  flex:1;
+  padding:6px; background:#333; color:#ccc; border:none; border-radius:6px; cursor:pointer;
+}
+.subtab-btn.active { background:#555; color:#fff; }
+
+.subtab-content { display:flex; flex-direction:column; gap:6px; }
+
+#roundDisplay { font-weight:bold; }
+
+#secondDisplay { font-weight:bold; }
+
+/* Modale confirmation */
+#confirmModal {
+  position:fixed; inset:0; background:rgba(0,0,0,0.6);
+  display:none; align-items:center; justify-content:center; z-index:200;
+}
+#confirmBox {
+  background:#2b2b2b; padding:20px; border-radius:10px;
+  text-align:center; width:80%; max-width:300px; box-shadow:0 0 10px #000;
+}
+#confirmBox button { margin:10px 6px 0 6px; }
+
+/* Combat scrollable */
+#combatContent { display:flex; flex-direction:column; height:calc(100% - 64px); }
+.combat-top { flex-shrink:0; padding:10px; background:#2a2a2a; border-bottom:1px solid #444; display:flex; flex-direction:column; gap:8px; }
+.combat-list { flex:1; overflow-y:auto; padding:10px; }
+.combat-bottom { flex-shrink:0; padding:10px; background:#2a2a2a; border-top:1px solid #444; display:flex; justify-content:space-between; gap:6px; }
+
+/* Target list dropdown */
+#targetList {
+  display:none;
+  position:absolute;
+  background:#2b2b2b;
+  border:1px solid #444;
+  max-height:150px;
+  overflow-y:auto;
+  z-index:10;
+  padding:0;
+}
+#targetList label {
+  display:block;
+  position:relative;
+  padding-left:24px;
+  margin:2px 0;
+  cursor:pointer;
+  user-select:none;
+}
+#targetList input[type=checkbox] {
+  position:absolute;
+  left:0;
+  top:50%;
+  transform:translateY(-50%);
+  margin:0;
+}
+
+@media(max-width:600px){
+h2{font-size:1.1rem;} button{font-size:0.9rem;} input,select{font-size:0.9rem;}
+}
+</style>
+</head>
+<body>
+
+<!-- Onglet Combat -->
+<div id="combat" class="tab" style="display:flex;">
+  <div id="combatContent">
+    <div class="combat-top">
+      <div class="flex">
+        <select id="charSelect"></select>
+        <input id="initInput" type="number" placeholder="Jet d'initiative">
+        <button id="addToCombat">Combattre !</button>
+      </div>
+
+      <!-- Buffs globaux et round -->
+      <div class="flex" style="align-items:center; justify-content:space-between;">
+        <div style="display:flex; align-items:center; gap:6px;width:100%">
+          <select id="buffSelectGlobal"></select>
+          <div style="position:relative;">
+            <button id="chooseTargets">Choisir les cibles</button>
+            <div id="targetList"></div>
+          </div>
+          <button id="applyBuffGlobal">Lancer</button>
+        </div>
+        <div>Round : <span id="roundDisplay">1</span> (<span id="secondDisplay">6</span> secondes)</div>
+      </div>
+
+    </div>
+    <div class="combat-list" id="combatList"></div>
+    <div class="combat-bottom">
+      <button id="startCombat">Début du combat</button>
+      <button id="nextTurn">Tour suivant</button>
+      <button id="resetCombat" style="background:#b33;">🧹 Réinitialiser</button>
+    </div>
+  </div>
+</div>
+
+<!-- Onglet Personnages -->
+<div id="characters" class="tab">
+  <h2>🧙 Personnages</h2>
+  <div class="subtabs">
+    <button class="subtab-btn active" data-subtab="heros">🛡️ Héros</button>
+    <button class="subtab-btn" data-subtab="allies">🤝 Alliés</button>
+    <button class="subtab-btn" data-subtab="ennemis">💀 Ennemis</button>
+  </div>
+  
+  <!-- Contenu de chaque sous-onglet -->
+  <div id="heros" class="subtab-content">
+    <div class="flex">
+      <input id="herosName" placeholder="Nom">
+      <input id="herosHp" type="number" placeholder="PV">
+      <input id="herosInit" type="number" placeholder="Initiative de base">
+      <button id="addHero">Ajouter</button>
+    </div>
+    <div class="list" id="herosList"></div>
+  </div>
+  
+  <div id="allies" class="subtab-content" style="display:none;">
+    <div class="flex">
+      <input id="alliesName" placeholder="Nom">
+      <input id="alliesHp" type="number" placeholder="PV">
+      <input id="alliesInit" type="number" placeholder="Initiative de base">
+      <button id="addAlly">Ajouter</button>
+    </div>
+    <div class="list" id="alliesList"></div>
+  </div>
+  
+  <div id="ennemis" class="subtab-content" style="display:none;">
+    <div class="flex">
+      <input id="ennemisName" placeholder="Nom">
+      <input id="ennemisInit" type="number" placeholder="Initiative de base">
+      <button id="addEnemy">Ajouter</button>
+    </div>
+    <div class="list" id="ennemisList"></div>
+  </div>
+</div>
+
+<!-- Onglet Buffs -->
+<div id="buffs" class="tab">
+  <h2>✨ Buffs</h2>
+  <div class="flex">
+    <input id="buffName" placeholder="Nom">
+    <input id="buffValue" placeholder="Valeur">
+    <input id="buffDuration" type="number" placeholder="Durée">
+    <button id="addBuff">Ajouter</button>
+  </div>
+  <div class="list" id="buffList"></div>
+</div>
+
+<!-- Barre onglets -->
+<nav>
+  <button data-tab="combat" class="active">⚔️ Combat</button>
+  <button data-tab="characters">🧙 Personnages</button>
+  <button data-tab="buffs">✨ Buffs</button>
+</nav>
+
+<!-- Modale confirmation -->
+<div id="confirmModal">
+  <div id="confirmBox">
+    <p>Réinitialiser complètement le combat ?</p>
+    <button id="confirmYes" style="background:#b33;">Oui</button>
+    <button id="confirmNo">Non</button>
+  </div>
+</div>
+
+<script>
+// ===== Données =====
+let data = JSON.parse(localStorage.getItem("dndData")||"{}");
+if(!data.characters) data.characters=[];
+if(!data.buffs) data.buffs=[];
+if(!data.combat) data.combat={participants:[],round:1,currentIndex:-1};
+function saveData(){localStorage.setItem("dndData",JSON.stringify(data));}
+
+// ===== Onglets =====
+const tabs=document.querySelectorAll("nav button");
+const sections=document.querySelectorAll(".tab");
+tabs.forEach(btn=>{
+  btn.addEventListener("click",()=>{
+    tabs.forEach(b=>b.classList.remove("active"));
+    sections.forEach(s=>s.style.display="none");
+    btn.classList.add("active");
+    document.getElementById(btn.dataset.tab).style.display="flex";
+    renderAll();
+  });
+});
+
+// ===== Personnages =====
+const subtabBtns = document.querySelectorAll(".subtab-btn");
+const subtabContents = document.querySelectorAll(".subtab-content");
+subtabBtns.forEach(btn=>{
+  btn.addEventListener("click",()=>{
+    subtabBtns.forEach(b=>b.classList.remove("active"));
+    subtabContents.forEach(c=>c.style.display="none");
+    btn.classList.add("active");
+    document.getElementById(btn.dataset.subtab).style.display="flex";
+  });
+});
+
+function addHero() {
+  const name = document.getElementById("herosName").value;
+  const hp = parseInt(document.getElementById("herosHp").value) || 0;
+  const init = parseInt(document.getElementById("herosInit").value) || 0;
+  if(!name) return;
+  data.characters.push({id:Date.now(),name,type:"héros",maxHp:hp,baseInit:init});
+  saveData(); renderHeros(); 
+  document.getElementById("herosName").value=""; document.getElementById("herosHp").value=""; document.getElementById("herosInit").value=20;
+}
+
+function addAlly() {
+  const name = document.getElementById("alliesName").value;
+  const hp = parseInt(document.getElementById("alliesHp").value) || 0;
+  const init = parseInt(document.getElementById("alliesInit").value) || 0;
+  if(!name) return;
+  data.characters.push({id:Date.now(),name,type:"allié",maxHp:hp,baseInit:init});
+  saveData(); renderAllies();
+  document.getElementById("alliesName").value=""; document.getElementById("alliesHp").value=""; document.getElementById("alliesInit").value=20;
+}
+
+function addEnemy() {
+  const name = document.getElementById("ennemisName").value;
+  const init = parseInt(document.getElementById("ennemisInit").value) || 0;
+  if(!name) return;
+  data.characters.push({id:Date.now(),name,type:"ennemi",baseInit:init});
+  saveData(); renderEnemies();
+  document.getElementById("ennemisName").value=""; document.getElementById("ennemisInit").value=20;
+}
+
+document.getElementById("addHero").onclick=addHero;
+document.getElementById("addAlly").onclick=addAlly;
+document.getElementById("addEnemy").onclick=addEnemy;
+
+function renderHeros(){
+  const list = document.getElementById("herosList");
+  list.innerHTML="";
+  data.characters.filter(c=>c.type==="héros").forEach(c=>{
+    const div=document.createElement("div");
+    div.className="flex";
+    div.innerHTML=`
+      <span style="font-weight:bold;width:100%;">${c.name}</span>
+      <input type="number" placeholder="PV max" value="${c.maxHp}" oninput="updateCharHp(${c.id}, this.value)">
+      <input type="number" placeholder="Initiative de base" value="${c.baseInit}" oninput="updateCharInit(${c.id}, this.value)">
+      <button class="remove-small" onclick="data.characters=data.characters.filter(x=>x.id!==${c.id});saveData();renderHeros();">❌</button>
+    `;
+    list.appendChild(div);
+  });
+}
+
+function renderAllies(){
+  const list = document.getElementById("alliesList");
+  list.innerHTML="";
+  data.characters.filter(c=>c.type==="allié").forEach(c=>{
+    const div=document.createElement("div");
+    div.className="flex";
+    div.innerHTML=`
+      <span style="font-weight:bold;width:100%;">${c.name}</span>
+      <input type="number" placeholder="PV max" value="${c.maxHp}" oninput="updateCharHp(${c.id}, this.value)">
+      <input type="number" placeholder="Initiative de base" value="${c.baseInit}" oninput="updateCharInit(${c.id}, this.value)">
+      <button class="remove-small" onclick="data.characters=data.characters.filter(x=>x.id!==${c.id});saveData();renderAllies();">❌</button>
+    `;
+    list.appendChild(div);
+  });
+}
+
+function renderEnemies(){
+  const list = document.getElementById("ennemisList");
+  list.innerHTML="";
+  data.characters.filter(c=>c.type==="ennemi").forEach(c=>{
+    const div=document.createElement("div");
+    div.className="flex";
+    div.innerHTML=`
+      <span style="font-weight:bold;width:100%;">${c.name}</span>
+      <input type="number" placeholder="Initiative de base" value="${c.baseInit}" oninput="updateCharInit(${c.id}, this.value)">
+      <button class="remove-small" onclick="data.characters=data.characters.filter(x=>x.id!==${c.id});saveData();renderEnemies();">❌</button>
+    `;
+    list.appendChild(div);
+  });
+}
+
+// ===== Buffs =====
+function renderBuffs(){
+  const buffList=document.getElementById("buffList"); buffList.innerHTML="";
+  data.buffs.forEach(b=>{
+    const div=document.createElement("div");
+    div.className="buff";
+    div.innerHTML=`<b>${b.name}</b> (${b.value||"?"}) — ${b.defaultDuration} tours <button class="remove-small" onclick="deleteBuff(${b.id})">❌</button>`;
+    buffList.appendChild(div);
+  });
+}
+function deleteBuff(id){data.buffs=data.buffs.filter(b=>b.id!==id);saveData();renderBuffs();}
+document.getElementById("addBuff").onclick=()=>{
+  const name=document.getElementById("buffName").value;
+  const value=document.getElementById("buffValue").value;
+  const duration=parseInt(document.getElementById("buffDuration").value)||1;
+  if(!name) return;
+  data.buffs.push({id:Date.now(),name,value,defaultDuration:duration});
+  saveData();document.getElementById("buffName").value="";document.getElementById("buffValue").value="";document.getElementById("buffDuration").value="";renderBuffs();
+};
+
+// ===== Combat =====
+function renderCharSelect() {
+  // IDs des héros déjà en combat
+  const activeHeroIds = data.combat.participants
+    .filter(p => {
+      const c = data.characters.find(ch => ch.id === p.charId);
+      return c && c.type === "héros";
+    })
+    .map(p => p.charId);
+
+  // Filtrer les personnages disponibles
+  let availableChars = data.characters.filter(c => !(c.type === "héros" && activeHeroIds.includes(c.id)));
+
+  // Trier par type : Héros → Alliés → Ennemis
+  const typeOrder = { "héros": 0, "allié": 1, "ennemi": 2 };
+  availableChars.sort((a, b) => typeOrder[a.type] - typeOrder[b.type]);
+
+  // Générer les options
+  const sel = document.getElementById("charSelect");
+  sel.innerHTML = availableChars
+    .map(c => `<option value="${c.id}">${c.name} (${c.type})</option>`)
+    .join("");
+}
+
+function updateCharHp(id, value) {
+    const c = data.characters.find(ch => ch.id === id);
+    if (!c) return;
+    c.maxHp = parseInt(value) || 0;
+    saveData();
+    renderHeros;
+    renderAllies;
+}
+
+function updateCharInit(id, value) {
+    const c = data.characters.find(ch => ch.id === id);
+    if (!c) return;
+    c.baseInit = parseInt(value) || 0;
+    saveData();
+    renderHeros;
+    renderAllies;
+    renderEnemies;
+}
+
+document.getElementById("addToCombat").onclick=()=>{
+  const charId=parseInt(document.getElementById("charSelect").value);
+  const char=data.characters.find(c=>c.id===charId);
+  if(!char) return;
+  const initInput = parseInt(document.getElementById("initInput").value) || 0;
+  const totalInit = initInput + (char.baseInit || 0); // ajoute le score de base
+  let sameNameCount = data.combat.participants
+    .filter(p => p.name.startsWith(char.name))
+    .length;
+  let participantName = char.name;
+  if (char.type === "allié" || char.type === "ennemi") {
+    participantName += ` ${sameNameCount + 1}`;
+  }
+  let participant;
+  if(char.type==="ennemi"){
+    participant = {id:Date.now(), charId:char.id, name:participantName, initiative:totalInit, hp:0, maxHp:null, team:char.type, activeBuffs:[]};
+  } else {
+    participant = {id:Date.now(), charId:char.id, name:participantName, initiative:totalInit, hp:char.maxHp, maxHp:char.maxHp, team:char.type, activeBuffs:[]};
+  }
+  data.combat.participants.push(participant);
+  saveData();renderCombat();renderCharSelect();
+};
+
+// Scroll automatique uniquement au changement de tour
+function scrollToActive() {
+  const activeDiv = document.querySelector(".participant.active");
+  if(activeDiv) activeDiv.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+// PV ajustables
+function adjustHp(id, delta){
+  const p = data.combat.participants.find(p => p.id === id);
+  if(!p) return;
+
+  if(p.team==="héros" || p.team==="allié"){
+    p.hp = Math.max(-10, p.hp + delta);
+  } else {
+    p.hp = Math.max(0, p.hp + delta);
+  }
+
+  saveData();
+  renderCombat();
+}
+function removeParticipant(id){
+  data.combat.participants=data.combat.participants.filter(p=>p.id!==id);
+  if(data.combat.currentIndex >= data.combat.participants.length){data.combat.currentIndex=0;}
+  saveData(); renderCombat(); renderCharSelect();
+}
+
+// Déplacer participant ↑/↓
+function moveUp(index){
+  if(index <= 0) return;
+  const p = data.combat.participants;
+  [p[index-1], p[index]] = [p[index], p[index-1]];
+  saveData(); renderCombat();
+}
+function moveDown(index){
+  const p = data.combat.participants;
+  if(index >= p.length-1) return;
+  [p[index], p[index+1]] = [p[index+1], p[index]];
+  saveData(); renderCombat();
+}
+
+// Supprimer buff
+function removeBuff(participantId, buffIndex){
+  const p = data.combat.participants.find(x => x.id === participantId);
+  if(!p) return;
+  p.activeBuffs.splice(buffIndex,1);
+  saveData();
+  renderCombat();
+}
+
+// Buffs globaux
+function renderTargetList(){
+  const container = document.getElementById("targetList");
+  container.innerHTML="";
+  data.combat.participants.forEach(p=>{
+    const div = document.createElement("div");
+    div.innerHTML = `<label><input type="checkbox" value="${p.id}"> ${p.name}</label>`;
+    container.appendChild(div);
+  });
+}
+document.getElementById("chooseTargets").onclick = ()=>{
+  const list = document.getElementById("targetList");
+  list.style.display = list.style.display==="none" ? "block" : "none";
+  renderTargetList();
+};
+document.getElementById("applyBuffGlobal").onclick = ()=>{
+  const buffId = parseInt(document.getElementById("buffSelectGlobal").value);
+  const buff = data.buffs.find(b=>b.id===buffId); if(!buff) return;
+  const checkboxes = document.querySelectorAll("#targetList input[type=checkbox]:checked");
+  const casterId = data.combat.participants[data.combat.currentIndex]?.id || null;
+  checkboxes.forEach(cb=>{
+    const p = data.combat.participants.find(x=>x.id===parseInt(cb.value));
+    if(p) p.activeBuffs.push({name: buff.name, value: buff.value, duration: buff.defaultDuration, casterId: casterId});
+  });
+  document.getElementById("targetList").style.display = "none"; // ferme le menu
+  saveData(); renderCombat();
+};
+
+// Lancer et Tour suivant avec logique buffs par round
+document.getElementById("startCombat").onclick = () => {
+  data.combat.participants.sort((a,b)=>b.initiative-a.initiative);
+  data.combat.round=1;
+  data.combat.currentIndex=0;
+  saveData(); renderCombat(); scrollToActive();
+};
+document.getElementById("nextTurn").onclick = () => {
+  const p = data.combat.participants; if(p.length===0) return;
+  
+  data.combat.currentIndex++;
+  if(data.combat.currentIndex >= p.length){
+    data.combat.currentIndex = 0;
+    data.combat.round++;
+  }
+
+  const currentRound = data.combat.round;
+  const current = p[data.combat.currentIndex];
+
+  p.forEach(part => {
+    part.activeBuffs.forEach(b => {
+      if(b.casterId === current.id && (b.lastDecrementedRound === undefined || b.lastDecrementedRound < currentRound)) {
+        b.duration--;
+        b.lastDecrementedRound = currentRound;
+      }
+    });
+    part.activeBuffs = part.activeBuffs.filter(b => b.duration > 0);
+  });
+
+  saveData(); renderCombat(); scrollToActive();
+};
+
+// Affichage combat
+function renderCombat(){
+  const buffSelectGlobal = document.getElementById("buffSelectGlobal");
+  buffSelectGlobal.innerHTML = data.buffs.map(b=>`<option value="${b.id}">${b.name} (${b.value})</option>`).join('');
+
+  const combatList=document.getElementById("combatList"); combatList.innerHTML="";
+  data.combat.participants.forEach((p,i)=>{
+    const div=document.createElement("div"); div.className="participant"+(i===data.combat.currentIndex?" active":"");
+    
+    let nameColor = "#fff";
+    if(p.team==="héros") nameColor="limegreen";
+    else if(p.team==="allié") nameColor="orange";
+    else if(p.team==="ennemi") nameColor="red";
+
+    div.innerHTML=`
+<div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+  <span style="color:${nameColor};"><b>${p.name}</b></span>
+  <span>Init ${p.initiative}</span>
+  <button class="small" onclick="moveUp(${i})">↑</button>
+  <button class="small" onclick="moveDown(${i})">↓</button>
+</div>
+<div class="pv-control">
+  <button class="small" onclick="adjustHp(${p.id},-5)">-5</button>
+  <button class="small" onclick="adjustHp(${p.id},-1)">-1</button>
+  <div class="pv-display">${p.team==="ennemi"?p.hp+" dégâts":p.hp+"/"+p.maxHp}</div>
+  <button class="small" onclick="adjustHp(${p.id},1)">+1</button>
+  <button class="small" onclick="adjustHp(${p.id},5)">+5</button>
+</div>
+<div>
+${p.activeBuffs.map((b,idx)=>`${b.name} (${b.duration}) <button class="small" onclick="removeBuff(${p.id},${idx})">❌</button>`).join(", ") || "—"}
+</div>
+<button class="remove" onclick="removeParticipant(${p.id})">❌</button>`;
+    combatList.appendChild(div);
+  });
+  document.getElementById("roundDisplay").textContent=data.combat.round;
+  document.getElementById("secondDisplay").textContent=data.combat.round * 6;
+}
+
+// Réinitialisation modale
+const modal=document.getElementById("confirmModal");
+document.getElementById("resetCombat").onclick=()=>{modal.style.display="flex";};
+document.getElementById("confirmYes").onclick=()=>{
+  data.combat={participants:[],round:1,currentIndex:-1};
+  saveData();renderCombat();renderCharSelect();modal.style.display="none";
+};
+document.getElementById("confirmNo").onclick=()=>{modal.style.display="none";};
+
+// Initial render
+function renderAll(){renderHeros();renderAllies();renderEnemies();renderBuffs();renderCharSelect();renderCombat();}
+renderAll();
+</script>
+</body>
+</html>
