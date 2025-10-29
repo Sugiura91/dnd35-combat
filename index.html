@@ -409,6 +409,11 @@ document.getElementById("addBuff").onclick=()=>{
 
 // ===== Combat =====
 function renderCharSelect() {
+  const sel = document.getElementById("charSelect");
+
+  // 🔹 On garde la sélection actuelle (si elle existe)
+  const previousSelection = sel?.value;
+
   // IDs des héros déjà en combat
   const activeHeroIds = data.combat.participants
     .filter(p => {
@@ -425,11 +430,18 @@ function renderCharSelect() {
   availableChars.sort((a, b) => typeOrder[a.type] - typeOrder[b.type]);
 
   // Générer les options
-  const sel = document.getElementById("charSelect");
   sel.innerHTML = availableChars
     .map(c => `<option value="${c.id}">${c.name} (${c.type})</option>`)
     .join("");
+
+  // 🔹 Si la sélection précédente correspond à un allié ou un ennemi, on la restaure
+  const prevChar = data.characters.find(ch => ch.id == previousSelection);
+  if (prevChar && (prevChar.type === "allié" || prevChar.type === "ennemi")) {
+    const optionToSelect = sel.querySelector(`option[value="${previousSelection}"]`);
+    if (optionToSelect) sel.value = previousSelection;
+  }
 }
+
 
 function updateCharHp(id, value) {
     const c = data.characters.find(ch => ch.id === id);
