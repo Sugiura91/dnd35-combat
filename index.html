@@ -137,6 +137,23 @@ button.remove-small:hover {
 .combat-list { flex:1; overflow-y:auto; padding:8px;}
 .combat-bottom { flex-shrink:0; position: sticky; bottom: calc(64px + env(safe-area-inset-bottom)); padding:8px; background:#2a2a2a; border-top:1px solid #444; display:flex; justify-content:space-between; gap:2px; }
 
+/* === Zones de liste défilables === */
+#herosList, 
+#alliesList, 
+#ennemisList {
+  overflow-y: auto;
+  flex: 1;
+  max-height: calc(100vh - 200px); /* Ajuste selon ton entête et ton pied de page */
+  padding: 6px 0;
+}
+#buffList {
+  overflow-y: auto;
+  flex: 1;
+  max-height: calc(100vh - 160px); /* Ajuste selon ton entête et ton pied de page */
+  padding: 6px 0;
+}
+
+
 /* Target list dropdown */
 #targetList {
   display:none;
@@ -185,9 +202,12 @@ h2{font-size:1.1rem;} button{font-size:0.9rem;} input,select{font-size:0.9rem;}
       <!-- Buffs globaux et round -->
       <div class="flex" style="align-items:center; justify-content:space-between;">
         <div style="display:flex; align-items:center; gap:6px;width:100%">
-          <select id="buffSelectGlobal"></select>
+          <div id="buffSelector" style="position:relative;width:90%;">
+            <input type="text" id="buffSearch" placeholder="Rechercher un buff..." style="width:92%;padding:6px;border-radius:6px;border:none;background:#222;color:#fff;">
+            <div id="buffDropdown" style="position:absolute;top:100%;left:0;width:100%;background:#1a1a1a;border:1px solid #333;border-radius:6px;max-height:180px;overflow-y:auto;display:none;z-index:10;"></div>
+          </div>
           <div style="position:relative;">
-            <button id="chooseTargets">Choisir les cibles</button>
+            <button id="chooseTargets">Cibles</button>
             <div id="targetList"></div>
           </div>
           <button id="applyBuffGlobal">Lancer</button>
@@ -549,17 +569,13 @@ document.getElementById("chooseTargets").onclick = ()=>{
   list.style.display = list.style.display==="none" ? "block" : "none";
   renderTargetList();
 };
-document.getElementById("applyBuffGlobal").onclick = ()=>{
-  const buffId = parseInt(document.getElementById("buffSelectGlobal").value);
-  const buff = data.buffs.find(b=>b.id===buffId); if(!buff) return;
-  const checkboxes = document.querySelectorAll("#targetList input[type=checkbox]:checked");
-  const casterId = data.combat.participants[data.combat.currentIndex]?.id || null;
-  checkboxes.forEach(cb=>{
-    const p = data.combat.participants.find(x=>x.id===parseInt(cb.value));
-    if(p) p.activeBuffs.push({name: buff.name, value: buff.value, duration: buff.defaultDuration, casterId: casterId});
-  });
-  document.getElementById("targetList").style.display = "none"; // ferme le menu
-  saveData(); renderCombat();
+
+document.getElementById("applyBuffGlobal").onclick = () => {
+  const buffName = document.getElementById("buffSearch").value.trim().toLowerCase();
+  if (!buffName) return;
+
+  const buff = data.buffs.find(b => b.name.toLowerCase() === buffName);
+  applyBuffToSelected(buff);
 };
 
 // Tour suivant avec logique buffs par round
@@ -608,9 +624,54 @@ document.getElementById("nextTurn").onclick = () => {
 };
 
 // Affichage combat
-function renderCombat(){
-  const buffSelectGlobal = document.getElementById("buffSelectGlobal");
-  buffSelectGlobal.innerHTML = data.buffs.map(b=>`<option value="${b.id}">${b.name} (${b.value})</option>`).join('');
+function renderCombat() {
+    const buffDropdown = document.getElementById("buffDropdown");
+    const buffSearch = document.getElementById("buffSearch");
+  
+    // Affichage dynamique de la liste des buffs selon filtre
+    function updateBuffList(filter = "") {
+      const filtered = data.buffs.filter(b =>
+        b.name.toLowerCase().includes(filter.toLowerCase())
+      );
+  
+      buffDropdown.innerHTML = filtered.map(b => `
+        <div class="buff-option" 
+             data-id="${b.id}"
+             style="padding:6px 8px;cursor:pointer;border-bottom:1px solid #333;">
+          ${b.name} (${b.value})
+        </div>
+      `).join('');
+  
+      // Affiche ou cache selon résultat
+      buffDropdown.style.display = filtered.length ? "block" : "none";
+    }
+  
+    // Quand on clique dans le champ, affiche la liste complète
+    buffSearch.addEventListener("focus", () => {
+      updateBuffList(""); // montre tout
+    });
+  
+    // Filtrage dynamique lors de la saisie
+    buffSearch.addEventListener("input", e => {
+      updateBuffList(e.target.value);
+    });
+  
+    // Gestion du clic sur un buff
+    buffDropdown.addEventListener("click", e => {
+      const option = e.target.closest(".buff-option");
+      if (!option) return;
+      const buffId = parseInt(option.dataset.id);
+      const buff = data.buffs.find(b => b.id === buffId);
+      buffDropdown.style.display = "none";
+      buffSearch.value = buff.name; // affiche le buff choisi
+    });
+  
+    // Ferme la liste quand on clique ailleurs
+    document.addEventListener("click", e => {
+      if (!document.getElementById("buffSelector").contains(e.target)) {
+        buffDropdown.style.display = "none";
+      }
+    }, true); // useCapture pour être sûr qu’il s’exécute avant d’autres handlers
 
   const combatList=document.getElementById("combatList"); combatList.innerHTML="";
   data.combat.participants.forEach((p,i)=>{
@@ -658,6 +719,49 @@ ${p.activeBuffs.map((b,idx)=>`${b.name} (${b.duration}) <button class="small" on
   if (nextTurn) {
     nextTurn.disabled = !data.combat.started;
   }
+}
+
+function applyBuffToSelected(buff) {
+  if (!buff) return;
+
+  const allCheckboxes = document.querySelectorAll("#targetList input[type=checkbox]");
+  const checkedBoxes = Array.from(allCheckboxes).filter(cb => cb.checked);
+  const targetList = document.getElementById("targetList");
+
+  // 🛑 Si aucune cible sélectionnée → ouvrir le menu et ne rien effacer
+  if (checkedBoxes.length === 0) {
+    targetList.style.display = "block";
+    return;
+  }
+
+  const casterId = data.combat.participants[data.combat.currentIndex]?.id || null;
+
+  // ✅ Appliquer le buff aux cibles sélectionnées
+  checkedBoxes.forEach(cb => {
+    const p = data.combat.participants.find(x => x.id === parseInt(cb.value));
+    if (p) {
+      p.activeBuffs.push({
+        name: buff.name,
+        value: buff.value,
+        duration: buff.defaultDuration,
+        casterId: casterId || null
+      });
+    }
+  });
+
+  // 🧹 Décoche toutes les cases après application
+  allCheckboxes.forEach(cb => cb.checked = false);
+
+  // 🪟 Ferme le menu des cibles
+  targetList.style.display = "none";
+
+  // 💾 Sauvegarde et rafraîchit
+  saveData();
+  renderCombat();
+
+  // 🧹 Efface le champ de recherche après application réussie
+  const buffSearch = document.getElementById("buffSearch");
+  if (buffSearch) buffSearch.value = "";
 }
 
 // Modal de confirmation
