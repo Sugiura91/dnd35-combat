@@ -161,6 +161,7 @@ button.remove-small:hover {
   background:#2b2b2b;
   border:1px solid #444;
   max-height:150px;
+  width: 140px;
   overflow-y:auto;
   z-index:10;
   padding:0;
@@ -765,28 +766,62 @@ function applyBuffToSelected(buff) {
 }
 
 // Modal de confirmation
-function showConfirm(message, onYes) {
+function showConfirm(message, onYes, yesText = "Oui", noText = "Non") {
   const modal = document.getElementById("confirmModal");
-  document.getElementById("confirmText").textContent = message;
+  const confirmText = document.getElementById("confirmText");
+  const yesBtn = document.getElementById("confirmYes");
+  const noBtn = document.getElementById("confirmNo");
+
+  confirmText.innerHTML = message.replace(/\n/g, "<br>");
+  yesBtn.textContent = yesText;
+  noBtn.textContent = noText;
+
+  // 💡 Si on veut une alerte simple (un seul bouton)
+  if (!noText) {
+    noBtn.style.display = "none";
+  } else {
+    noBtn.style.display = "inline-block";
+  }
+
   modal.style.display = "flex";
-  document.getElementById("confirmYes").onclick = () => {
+
+  yesBtn.onclick = () => {
     modal.style.display = "none";
-    onYes();
+    if (onYes) onYes();
   };
-  document.getElementById("confirmNo").onclick = () => {
+
+  noBtn.onclick = () => {
     modal.style.display = "none";
   };
 }
 
 // Début combat
 function startCombat() {
+  // 🧭 Vérifie s’il y a des participants
+    if (!data.combat.participants || data.combat.participants.length === 0) {
+          // Utilise showConfirm comme une alerte à un seul bouton
+          showConfirm("Le combat ne peut pas démarrer !\n\nAucun participant n’a été ajouté au combat.", null, "Ok", null);
+          return;
+    }
+
+  // 🗡️ Sinon, demande de confirmation avant de démarrer
   showConfirm("Voulez-vous démarrer un nouveau combat ?", () => {
     data.combat.started = true;
-    data.combat.participants.sort((a,b)=>b.initiative-a.initiative);
-    data.combat.round=1;
-    data.combat.currentIndex=0;
-    saveData(); renderCombat(); scrollToActive();
-    document.getElementById("nextTurn").disabled = false; // active le bouton "Tour suivant"
+
+    // Tri des participants par initiative décroissante
+    data.combat.participants.sort((a, b) => b.initiative - a.initiative);
+
+    // Réinitialisation des compteurs
+    data.combat.round = 1;
+    data.combat.currentIndex = 0;
+
+    // Sauvegarde et affichage
+    saveData();
+    renderCombat();
+    scrollToActive();
+
+    // Active le bouton "Tour suivant"
+    document.getElementById("nextTurn").disabled = false;
   });
 }
 
